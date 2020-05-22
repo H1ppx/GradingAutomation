@@ -7,6 +7,7 @@ import zbar
 import pdf2image
 import tkinter as tk
 import cv2
+import pytesseract
 
 from pprint import pprint
 from PyInquirer import style_from_dict, Token, prompt
@@ -35,8 +36,8 @@ mode = [
     {
         'type': 'list',
         'name': 'mode',
-        'message': 'Create or Grade:',
-        'choices': ['Create', 'Grade']
+        'message': 'Create, Grade, Tex-ify:',
+        'choices': ['Create', 'Grade', 'Tex-ify']
     }
 ]
 
@@ -118,7 +119,8 @@ wrongAnswerQuestions = [
 ]
 
 if __name__ == '__main__':
-    if prompt(mode)['mode'] == 'Create':
+    currentMode = prompt(mode)['mode']
+    if currentMode == 'Create':
 
         header = prompt(headerQuestions, style=style)
 
@@ -174,7 +176,6 @@ if __name__ == '__main__':
         doc.append(Command('end', 'questions'))
 
         big_code = pyqrcode.create(np.array_str(answerKey) , mode='binary')
-        print()
         big_code.png('code.png')
 
         with doc.create(Figure(position='b!')) as code:
@@ -182,30 +183,38 @@ if __name__ == '__main__':
 
         doc.generate_pdf(clean_tex=False)
         doc.generate_tex()
-    else:
+
+    elif currentMode == 'Grade':
+
         filename = askopenfilename()
-        print(filename)
-        # image = Image.open(filename)
         image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
         scanner = zbar.Scanner()
         results = scanner.scan(image)
         for result in results:
             print(result.type, result.data, result.quality, result.position)
 
+        answerKey = list(str(results[0].data.decode("utf-8"))[1:-1].split("."))
+
         image = cv2.imread(filename)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        # detect circles in the image
-        circles = cv2.HoughCircles(image, cv2.HOUGH_GRADIENT, 1.2, 100)
-        # ensure at least some circles were found
+        gray_blurred = cv2.blur(gray, (3, 3))
+        circles = cv2.HoughCircles(gray_blurred,
+                                            cv2.HOUGH_GRADIENT, 1, 20, param1=50,
+                                            param2=30, maxRadius=10)
         if circles is not None:
-            # convert the (x, y) coordinates and radius of the circles to integers
             circles = np.round(circles[0, :]).astype("int")
-            # loop over the (x, y) coordinates and radius of the circles
             for (x, y, r) in circles:
-                # draw the circle in the output image, then draw a rectangle
-                # corresponding to the center of the circle
                 cv2.circle(image, (x, y), r, (0, 255, 0), 4)
                 cv2.rectangle(image, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
-            # show the output image
-            cv2.imshow("output", image)
-            cv2.waitKey(0)
+            # cv2.imshow("output", image) # TODO: Remove once completed
+            # cv2.waitKey(0) # TODO: Remove once completed
+
+        crop_img = gray[30:120, 750:1125]
+        student_name = pytesseract.image_to_string(Image.fromarray(crop_img))
+        print(student_name)
+        print(pytesseract.image_to_boxes(Image.fromarray(gray)))
+        hocr = pytesseract.image_to_pdf_or_hocr(Image.fromarray(crop_img), extension='hocr')
+
+
+    else:
+        print("Todo")
